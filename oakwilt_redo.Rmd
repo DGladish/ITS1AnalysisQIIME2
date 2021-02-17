@@ -15,8 +15,6 @@ Set .libPaths() to the directory that houses the downloaded R packages.
 
 ```
 
-Not sure what this chunk below does
-
 ```{r, global_options, eval=TRUE, echo=FALSE}
 library(knitr)
 opts_chunk$set(tidy.opts=list(width.cutoff = 80), tidy = TRUE, fig.align = 'center',
