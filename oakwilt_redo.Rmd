@@ -102,13 +102,13 @@ for(i in 1:nrow(metadata)){
   system(cmd[i])
 }
 
-# ^^^ above for command does not work, reports "Error: object 'cmd' not found"
+# ^^^ above for command does not work, reports "Error: object 'cmd' not found". Try the following:
 
 system("tar -xvjf /isilon/cfia-ottawa-fallowfield/users/girouxeml/data/raw/Ion_Torrent/pirl_general/R_2021_01_05_00_59_57_user_S5-0143-150-OW_ITSF_Plate1InsectRpd_2021-01-04/R_2021_01_05_00_59_57_user_S5-0143-150-OW_ITSF_Plate1InsectRpd_2021-01-04.tar.bz2 -C /isilon/cfia-ottawa-fallowfield/users/girouxeml/gladishd/pirl_working/oakwilt_redo/rawData")
 
 system("tar -xvjf /isilon/cfia-ottawa-fallowfield/users/girouxeml/data/raw/Ion_Torrent/pirl_general/R_2021_01_05_06_44_57_user_S5-0143-151-OW_ITS2rev_Plate1Insect_repeated_2021-01-04/R_2021_01_05_06_44_57_user_S5-0143-151-OW_ITS2rev_Plate1Insect_repeated_2021-01-04.tar.bz2 -C /isilon/cfia-ottawa-fallowfield/users/girouxeml/gladishd/pirl_working/oakwilt_redo/rawData")
+# seems to work well
 
-# ^^ not sure if these work. Will have to test.
 
 metadataITSF_files <- list.files(rawDataWorkingPath, pattern = "ITSF", recursive = TRUE, full.names = TRUE)
 metadataITSF <- as.data.table(cbind(metadataITSF_files))
@@ -133,19 +133,7 @@ setnames(metadataITS, "basename.y", "revFastq")
 metadataITS <- na.omit(metadataITS)
 ```
 
-Prepare file directories:    
-Qiime2     
-# Input folder     
-export fastq=/media/30tb_raid10/data/PIRL/2020-01-15_OAK_ITSF_30     
-# Output folder     
-export baseDir=/media/2TB_NVMe/pirl_2020-01-15_ITS1F     
-     
-        
-Mimicking Marc-o's file directroy structure:    
-baseDir <- sharedPathAn     
-qiime2 <- paste(sharedPathAn, "qiime2", sep = "/")     
-trimmed <- paste(sharedPathAn, "trimmed", sep = "/")     
-logs <- paste(sharedPathAn, "logs", sep = "/")     
+Prepare file directories:      
 ```{r}
 # Make a directory for the trimmed data
 trimmedData <- paste(sharedPathAn, "trimmed", sep = "/")
@@ -163,7 +151,7 @@ dir.create(qiime2Dir, showWarnings = TRUE, recursive = FALSE)
 Retrieve ITS1 part of the amplicons using ITSxpress (includes trimming regions and export)      
 Run ITSxpress on the raw fastq reads:   
      
-**Note:** For the ITS2 region, itsxpress does not recognise the ITS2 amplicon regions and nothing is returned - no OTU table for ITS2 can be generated. Marco is looking into this issue to see if there is a sequence pattern at the ends that is inhibiting the correct processing of the sequences by itsxpress?? Possible overfitlering?? Direct checking of the sequences shows us that the ITS2 regions are in fact present, and there are many sequences observed. Problem appears to be random, and has worked with some sets of data but not others.... possible barcode issue??    
+**Note:** For the ITS2 region, itsxpress does not recognise the ITS2 amplicon regions and nothing is returned - no OTU table for ITS2 can be generated using this code (for now). An solution is currently being saught after to resolve this issue.  
 ```{r}
 prefix <- "ITSxpress_ITSF"
 cmd <- paste("conda activate qiime2-2020.11 && itsxpress ",  
@@ -180,8 +168,7 @@ suffix <- ".sub"; cat(bashDirections); MakeQsubs(cmd, prefix, suffix)
 ```{r}
 RemoveQsubTempFiles(sharedPathAn, prefix)
 ```
-
-It was found that when trying to do ITSxpress on the forward reads, many samples in the logs showed "No ITS stop or start sites were identified". See how this compares with the reverse reads in this chunk here.
+This is the code that was used to try and use ITSxpress on the reverse reads to try and extract the ITS2 region. Note that this doesn't work as of now. The result after running this code is simply 93 empty .fastq files.
 ```{r}
 trimmedData2rev <- paste(trimmedData, "trimmed_ITS2R", sep = "/")
 dir.create(trimmedData2rev)
@@ -215,11 +202,6 @@ write.table(manifest, file = paste(sharedPathAn, "qiime2_import_manifest.tsv", s
 ```
 
 # import fastq files
-qiime tools import \
-    --type 'SampleData[SequencesWithQuality]' \
-    --input-path "${baseDir}"/fastq \
-    --output-path "${baseDir}"/qiime2/demux-single-end.qza \
-    --input-format SingleEndFastqManifestPhred33V2
 ```{r}
 prefix <- "qiimeImport"
 cmd <- paste("conda activate qiime2-2020.11 && ",
@@ -379,7 +361,7 @@ cmd <- paste("conda activate qiime2-2020.11 && ",
 suffix <- ".sub"; cat(bashDirections); MakeQsubs(cmd, prefix, suffix)
 ```
 
-To get the ASV/OTU tablewith taxonomy column at the end, do we combine the otu_table.tsv and taxonomy.tsv together by feature ID row?
+
 ```{r}
 list.files(path = paste(sharedPathAn, "phyloseq", sep = "/"))
 library(data.table)
@@ -484,7 +466,7 @@ cmd <- paste("conda activate python3.6 && ",
              " && conda deactivate ", sep = "")
 suffix <- ".sub"; cat(bashDirections); MakeQsubs(cmd, prefix, suffix)
 
-
+### ^^ this code has been giving me issues & does not work yet. I have not yet figured out how to run the FUNGuild script through RStudio.
 ```
 
 FIGURES
@@ -547,8 +529,6 @@ write.table(metatempdiv, file=paste(diversityPath, "OW2021redo_ITS.meta.div.tsv"
               quote=FALSE)
 
 ```
-
-
 
 Mean & whisker plots
 ```{r}
@@ -617,7 +597,7 @@ group.diversity(list(data=tabletemp), metatempdiv, factors = c("CollectedLocatio
 ```
 
 
-Generate abundance bar graphs
+Generate abundance bar graphs (might not be necessary. Guillaume wants top 100, but this would make the figure visually interpretable, as there are too many like colours in the bar graph. Perhaps just use the list in the excel file that is created later on in this script.
 ```{r}
 visdir <- paste(pathDataAn, "visualizations", sep = "/")
 dir.create(paste(visdir, "groupAbundanceBarPlots", sep = "/"),
@@ -646,9 +626,6 @@ tabletempNTF$taxonomy <- gsub(";", "; ", tabletempNTF$taxonomy)
 
 ## Species
 
-png(filename=paste(abundNbBarPlotPathGB, "ITS1F", ".gr.abund.genera.top30.Host_Species.png", sep = ""),
-      width = 3500, height = 2000, units = "px", pointsize = 12, res = 300)
-
 group.abundance.meta(data=(list(data=tabletempNTF)), rank="s", top = 100, count =  TRUE, drop.unclassified = FALSE, cex.x = 6.7, main = "Top 100 counts of taxonomic groups at the species level", meta = metatemp, meta.factor = c("TrapLocation"))
 
 # In the Plot menu, click export then save as image. Save as .png with dimensions width = 3500, height = 2000. Do this saving procedure after each time group.abundance.meta() is run. Save to created directory groupAbundanceBarPlots
@@ -665,9 +642,6 @@ group.abundance.meta(data=(list(data=tabletempNTF)), rank="g", top = 30, count =
 
 ## Species
 
-png(filename=paste(abundNbBarPlotPathGB, "ITS1F", ".gr.abund.genera.top30.Host_Species.png", sep = ""),
-      width = 3500, height = 2000, units = "px", pointsize = 12, res = 300)
-
 group.abundance.meta(data=(list(data=tabletempNTF)), rank="s", top = 30, count =  TRUE, drop.unclassified = FALSE, cex.x = 7.5, main = "Top 30 counts of taxonomic groups at the species level", meta = metatemp, meta.factor = c("CollectedLocation"))
 
 
@@ -677,18 +651,6 @@ group.abundance.meta(data=(list(data=tabletempNTF)), rank="s", top = 30, count =
 
 ```
 
-Sample 51 appears to be an outlier and makes aspects of the abundance graphs difficult to see, essentially shrinking all of the other samples in the abundance graph. To overcome this, generate graphs for each metadata variable of interest with sample 51 omitted from both the metadata and ASV table.
-
-```{r}
-# Remove sample 51 from variables tabletemp and metatemp
-
-no51tabletemp <- tabletemp
-no51tabletemp$ITSF_OAK_2019Plate1_B51 <- NULL
-
-no51metatemp <- metatemp[-51,]
-
-# Run chunk 5 substituting in no51tabletemp and no51metatemp for tabletemp and metatemp
-```
 
 Venn Diagrams
 ```{r}
@@ -824,3 +786,5 @@ dir.create(workbookPath)
 
 saveWorkbook(work_bookcFaga, file = paste(workbookPath, "ordered_cFagacearum_containing_samples.xlsx", sep = "/"), overwrite = TRUE)
 ```
+
+## the resultant excel file demonstrates abundance of each species in order, for each sample that contains C. fagacaerum.
