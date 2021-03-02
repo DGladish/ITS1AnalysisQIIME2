@@ -1,5 +1,5 @@
 ---
-title: "OakWilt_Redo"
+title: "OakWilt_RedoITS1F"
 author: "Daniel Gladish"
 date: "1/19/2021"
 output:
@@ -14,6 +14,7 @@ Set .libPaths() to the directory that houses the downloaded R packages.
 .libPaths( c( "/isilon/cfia-ottawa-fallowfield/users/girouxeml/gladishd/R/x86_64-pc-linux-gnu-library/3.5" , .libPaths() ) )
 
 ```
+
 
 ```{r, global_options, eval=TRUE, echo=FALSE}
 library(knitr)
@@ -53,6 +54,10 @@ sapply(c(.cran_packages, .bioc_packages), require, character.only = TRUE)
 ```
 **Source our custom R scripts:**    
 For this we will use the rprojroot package to set the directory structures. This will help us when finding our files to source functions. We specify ours is an RStudio project. The root object contains a function that will help us locate our package R files regarless of our current working directory.
+
+Ensure you have the following files in a directory below the directory that holds your .proj file: RemoveQsubTempFiles.R, MakeQsubs.R, MakeJobs.R, and bashDirections.R (basically, cd to the directory that contains your R .proj file, make a new directory within that directory, then download the files to that new directory). Ensure that the name of the directory is "R".
+
+These files are required in order to run this next chunk as well as the chunks that involve running the QIIME2 commands through this R script. These files are available from Emily Giroux's github oakwilt repository here: https://github.com/girouxem/oakwilt
 ```{r sourcing_my_functions, echo=TRUE, eval=TRUE, include=TRUE, tidy=FALSE}
 library("rprojroot")
 root        <- rprojroot::is_rstudio_project
@@ -62,7 +67,7 @@ scriptsl    <- paste(scriptsPath, scripts, sep = "/")
 lapply(scriptsl, source)
 ```
 
-Setting up working directories:
+Set up working directories
 ```{r}
 sharedPath <- "/isilon/cfia-ottawa-fallowfield/users/girouxeml/gladishd/pirl_working"
 analysis <- "oakwilt_redo"
@@ -74,14 +79,14 @@ dir.create("/isilon/cfia-ottawa-fallowfield/users/girouxeml//gladishd/GitHub_Rep
 baseImage <- "oakwilt_redo.RData"
 save.image(paste(imageDirPath, baseImage, sep = ""))
 ```
-Quick image load:
+Quick image load
 ```{r}
 imageDirPath <- "/isilon/cfia-ottawa-fallowfield/users/girouxeml/gladishd/GitHub_Repos/r_environments/oakwilt_redo/"
 baseImage <- "oakwilt_redo.RData"
 load(paste(imageDirPath, baseImage, sep = ""))
 ```
-### Step 1:       
-Set up all folders (baseDir, qiime2, trimmed, logs)     
+
+Extract .fastq files from the compressed .tar.bz2 files.
 ```{r}
 library("data.table")
 rawDataDirITSF <- "/isilon/cfia-ottawa-fallowfield/users/girouxeml/data/raw/Ion_Torrent/pirl_general/R_2021_01_05_00_59_57_user_S5-0143-150-OW_ITSF_Plate1InsectRpd_2021-01-04"
@@ -97,18 +102,10 @@ dir.create(rawDataWorkingPath, showWarnings = TRUE, recursive = FALSE)
 metadata$rawWorkingPath <- paste(rawDataWorkingPath, metadata$basename, sep = "/")
 
 for(i in 1:nrow(metadata)){
-  cmd[i] <- paste("mkdir -p ",  rawDataWorkingPath, " && tar -xvjf ", metadata$compressedFiles[i], 
+  cmd <- paste("mkdir -p ",  rawDataWorkingPath, " && tar -xvjf ", metadata$compressedFiles[i], 
                   " -C ", rawDataWorkingPath, sep = "")  
-  system(cmd[i])
+  system(cmd)
 }
-
-# ^^^ above for command does not work, reports "Error: object 'cmd' not found". Try the following:
-
-system("tar -xvjf /isilon/cfia-ottawa-fallowfield/users/girouxeml/data/raw/Ion_Torrent/pirl_general/R_2021_01_05_00_59_57_user_S5-0143-150-OW_ITSF_Plate1InsectRpd_2021-01-04/R_2021_01_05_00_59_57_user_S5-0143-150-OW_ITSF_Plate1InsectRpd_2021-01-04.tar.bz2 -C /isilon/cfia-ottawa-fallowfield/users/girouxeml/gladishd/pirl_working/oakwilt_redo/rawData")
-
-system("tar -xvjf /isilon/cfia-ottawa-fallowfield/users/girouxeml/data/raw/Ion_Torrent/pirl_general/R_2021_01_05_06_44_57_user_S5-0143-151-OW_ITS2rev_Plate1Insect_repeated_2021-01-04/R_2021_01_05_06_44_57_user_S5-0143-151-OW_ITS2rev_Plate1Insect_repeated_2021-01-04.tar.bz2 -C /isilon/cfia-ottawa-fallowfield/users/girouxeml/gladishd/pirl_working/oakwilt_redo/rawData")
-# seems to work well
-
 
 metadataITSF_files <- list.files(rawDataWorkingPath, pattern = "ITSF", recursive = TRUE, full.names = TRUE)
 metadataITSF <- as.data.table(cbind(metadataITSF_files))
@@ -133,7 +130,7 @@ setnames(metadataITS, "basename.y", "revFastq")
 metadataITS <- na.omit(metadataITS)
 ```
 
-Prepare file directories:      
+Prepare directories that will house the ITSxpress and QIIME2 output files
 ```{r}
 # Make a directory for the trimmed data
 trimmedData <- paste(sharedPathAn, "trimmed", sep = "/")
@@ -145,16 +142,15 @@ dir.create(itsxpressLogs, showWarnings = TRUE, recursive = TRUE)
 
 qiime2Dir <- paste(sharedPathAn, "qiime2", sep = "/")
 dir.create(qiime2Dir, showWarnings = TRUE, recursive = FALSE)
-```
+```     
 
-### Step 2:       
 Retrieve ITS1 part of the amplicons using ITSxpress (includes trimming regions and export)      
-Run ITSxpress on the raw fastq reads:   
+Run ITSxpress on the raw fastq reads   
      
-**Note:** For the ITS2 region, itsxpress does not recognise the ITS2 amplicon regions and nothing is returned - no OTU table for ITS2 can be generated using this code (for now). An solution is currently being saught after to resolve this issue.  
+**Note:** For the ITS2 region, itsxpress does not recognise the ITS2 amplicon regions and nothing is returned - no OTU table for ITS2 can be generated. We are currently looking into finding a solution so that the ITS2R reads can be used as well.
 ```{r}
 prefix <- "ITSxpress_ITSF"
-cmd <- paste("conda activate qiime2-2020.11 && itsxpress ",  
+cmd <- paste("conda activate qiime2-2021.2 && itsxpress ",  
              " --fastq ", metadataITS$metadataITSF_files, 
              " --single_end ",
              " --outfile ", paste(trimmedData, "/ITSF_trimmed.", metadataITS$barcode, ".fastq", sep = ""),
@@ -168,31 +164,14 @@ suffix <- ".sub"; cat(bashDirections); MakeQsubs(cmd, prefix, suffix)
 ```{r}
 RemoveQsubTempFiles(sharedPathAn, prefix)
 ```
-This is the code that was used to try and use ITSxpress on the reverse reads to try and extract the ITS2 region. Note that this doesn't work as of now. The result after running this code is simply 93 empty .fastq files.
-```{r}
-trimmedData2rev <- paste(trimmedData, "trimmed_ITS2R", sep = "/")
-dir.create(trimmedData2rev)
 
-prefix <- "ITSxpress_ITS2R"
-cmd <- paste("conda activate qiime2-2020.11 && itsxpress ",  
-             " --fastq ", metadataITS$metadataITS2R_files, 
-             " --single_end ",
-             " --outfile ", paste(trimmedData2rev, "/ITS2R_trimmed.", metadataITS$barcode, ".fastq", sep = ""),
-             " --region ITS2 --taxa Fungi --cluster_id 0.995 ", "--reversed_primers",
-             " --log ", paste(itsxpressLogs, "/ITS2R_trimmed.", metadataITS$barcode, ".log", sep = ""),
-             " && conda deactivate ",
-             sep = "")  
-suffix <- ".sub"; cat(bashDirections); MakeQsubs(cmd, prefix, suffix) 
-
-```
-
-Add the path to the trimmed fastq files and a column to set unique sample names based on the filename/sequencing run and sample barcode number:
+Add the path to the trimmed fastq files and a column to set unique sample names based on the filename/sequencing run and sample barcode number
 ```{r}
 metadataITSF$trimmedPath <- paste(trimmedData, "/ITSF_trimmed.", metadataITSF$barcode, ".fastq", sep = "")
 metadataITSF$SampleID <- paste("OW-ITSF-2021-Plate1InsectRpd", metadataITSF$barcode, sep = "-")
 ```
 
-Create a manifest file that qiime2 will use to import our fastq data and write it to a tsv file:
+Create a manifest file that qiime2 will use to import our fastq data and write it to a tsv file
 ```{r}
 library("data.table")
 manifest <- metadataITSF[, .('sample-id' = SampleID, 'absolute-filepath' = trimmedPath)]
@@ -201,10 +180,10 @@ write.table(manifest, file = paste(sharedPathAn, "qiime2_import_manifest.tsv", s
             quote = FALSE, sep = "\t", row.names = FALSE, col.names = TRUE)
 ```
 
-# import fastq files
+Import fastq files
 ```{r}
 prefix <- "qiimeImport"
-cmd <- paste("conda activate qiime2-2020.11 && ",
+cmd <- paste("conda activate qiime2-2021.2 && ",
              "qiime tools import ",
              " --type 'SampleData[SequencesWithQuality]' ",
              " --input-path ", paste(sharedPathAn, "qiime2_import_manifest.tsv", sep = "/"),
@@ -213,10 +192,10 @@ cmd <- paste("conda activate qiime2-2020.11 && ",
              " && conda deactivate ", sep = "")
 suffix <- ".sub"; cat(bashDirections); MakeQsubs(cmd, prefix, suffix)
 ```
-Create a file to visualise the qiime2 fastq files imported:
+Create a file to visualise the qiime2 fastq files imported
 ```{r}
 prefix <- "qiimeVisualiseImport"
-cmd <- paste("conda activate qiime2-2020.11 && ",
+cmd <- paste("conda activate qiime2-2021.2 && ",
              " qiime demux summarize ",
              " --i-data  ", paste(qiime2Dir, "/demux-single-end.qza", sep = ""),
              " --o-visualization ", paste(qiime2Dir, "/demux-single-end.qzv", sep = ""),
@@ -238,7 +217,7 @@ Denoise the sequences with dada2 within qiime2:
 - outputs an asv table and the representative sequences
 ```{r}
 prefix <- "qiimeDADA2deNoiseSingle"
-cmd <- paste("conda activate qiime2-2020.11 && ",
+cmd <- paste("conda activate qiime2-2021.2 && ",
              " qiime dada2 denoise-single ",
              " --i-demultiplexed-seqs ", paste(qiime2Dir, "/demux-single-end.qza", sep = ""),
              " --p-trim-left 0 ",
@@ -251,11 +230,11 @@ cmd <- paste("conda activate qiime2-2020.11 && ",
              " && conda deactivate ", sep = "")
 suffix <- ".sub"; cat(bashDirections); MakeQsubs(cmd, prefix, suffix)
 ```
-Export the dada2 results:    
+Export the dada2 results
 ```{r}
 # Export ASV (OTU-like table) table
 prefix <- "qiimeExport"
-cmd <- paste("conda activate qiime2-2020.11 && ",
+cmd <- paste("conda activate qiime2-2021.2 && ",
              " mkdir ", paste(sharedPathAn, "phyloseq", sep = "/"),
              " && qiime tools export ",
              " --input-path ", paste(qiime2Dir, "/table-dada2.qza", sep = ""),
@@ -270,7 +249,7 @@ RemoveQsubTempFiles(sharedPathAn, prefix)
 ```{r}
 # Convert biom format to tsv format
 prefix <- "qiimeBiomConvert"
-cmd <- paste("conda activate qiime2-2020.11 && ",
+cmd <- paste("conda activate qiime2-2021.2 && ",
              " biom convert ",
              " -i ", paste(sharedPathAn, "phyloseq", "feature-table.biom", sep = "/"), 
              " -o ", paste(sharedPathAn, "phyloseq", "otu_table.tsv", sep = "/"),
@@ -286,7 +265,7 @@ RemoveQsubTempFiles(sharedPathAn, prefix)
 ```{r}
 # Export representative sequences
 prefix <- "qiimeRepSeqsExport"
-cmd <- paste("conda activate qiime2-2020.11 && ",
+cmd <- paste("conda activate qiime2-2021.2 && ",
              " qiime tools export ",
              " --input-path ", paste(qiime2Dir, "/rep-seqs-dada2.qza", sep = ""),
              " --output-path ", paste(sharedPathAn, "phyloseq", sep = "/"),
@@ -298,7 +277,7 @@ RemoveQsubTempFiles(sharedPathAn, prefix)
 ```
 
 
-Set up the qiime2 UNITE database using UNITE 2018-2019 that Marc-o used:
+Set up the qiime2 UNITE database
 ```{r}
 uniteDBDir2019 <- "/isilon/cfia-ottawa-fallowfield/users/girouxeml/Databases/UNITE_2018-11-18_qiimeReleaseDB"
 ```
@@ -306,7 +285,7 @@ uniteDBDir2019 <- "/isilon/cfia-ottawa-fallowfield/users/girouxeml/Databases/UNI
 ```{r}
 # Import the UNITE reference sequences into QIIME2.
 prefix <- "qiimeUniteImport"
-cmd <- paste("conda activate qiime2-2020.11 && ",
+cmd <- paste("conda activate qiime2-2021.2 && ",
              " qiime tools import ",
              " --type FeatureData[Sequence] ",
              " --input-path ", paste(uniteDBDir2019, "sh_refs_qiime_ver8_99_02.02.2019.fasta", sep = "/"),
@@ -319,7 +298,7 @@ suffix <- ".sub"; cat(bashDirections); MakeQsubs(cmd, prefix, suffix)
 ```{r}
 # Import the taxonomy file.
 prefix <- "qiimeTaxUniteImport"
-cmd <- paste("conda activate qiime2-2020.11 && ",
+cmd <- paste("conda activate qiime2-2021.2 && ",
              " qiime tools import ",
              " --type FeatureData[Taxonomy] ",
              " --input-path ", paste(uniteDBDir2019, "sh_taxonomy_qiime_ver8_99_02.02.2019.txt", sep = "/"),
@@ -332,7 +311,7 @@ suffix <- ".sub"; cat(bashDirections); MakeQsubs(cmd, prefix, suffix)
 ```{r}
 # Train the classifier
 prefix <- "qiimeTrainUnite"
-cmd <- paste("conda activate qiime2-2020.11 && ",
+cmd <- paste("conda activate qiime2-2021.2 && ",
              " qiime feature-classifier fit-classifier-naive-bayes ",
              " --i-reference-reads ", paste(sharedPathAn, "phyloseq", "unite-ver8_99_02.02.2019.qza", sep = "/"), 
              " --i-reference-taxonomy ", paste(sharedPathAn, "phyloseq", "unite-ver8-taxonomy_99_02.02.2019.qza", sep = "/"),
@@ -343,7 +322,7 @@ suffix <- ".sub"; cat(bashDirections); MakeQsubs(cmd, prefix, suffix)
 
 ```{r}
 prefix <- "qiimeClassifyFeature"
-cmd <- paste("conda activate qiime2-2020.11 && ",
+cmd <- paste("conda activate qiime2-2021.2 && ",
              " qiime feature-classifier classify-sklearn ",
              " --i-classifier ", paste(sharedPathAn, "phyloseq", "unite-ver8-classifier_99_02.02.2019.qza", sep = "/"),
              " --i-reads ", paste(qiime2Dir, "rep-seqs-dada2.qza", sep = "/"),
@@ -353,7 +332,7 @@ suffix <- ".sub"; cat(bashDirections); MakeQsubs(cmd, prefix, suffix)
 ```
 ```{r}
 prefix <- "qiimeFeatureExport"
-cmd <- paste("conda activate qiime2-2020.11 && ",
+cmd <- paste("conda activate qiime2-2021.2 && ",
              " qiime tools export ",
              " --input-path ", paste(qiime2Dir, "taxonomy-single-end.qza", sep = "/"),
              " --output-path ", paste(sharedPathAn, "phyloseq", sep = "/"),
@@ -361,7 +340,7 @@ cmd <- paste("conda activate qiime2-2020.11 && ",
 suffix <- ".sub"; cat(bashDirections); MakeQsubs(cmd, prefix, suffix)
 ```
 
-
+Obtain the ASV/OTU table
 ```{r}
 list.files(path = paste(sharedPathAn, "phyloseq", sep = "/"))
 library(data.table)
@@ -403,37 +382,40 @@ row.names(temp) <- temp$otu.id
 temp$otu.id <- NULL
 
 
-## for later in case a no-tax filled OTU with the otu.id column moved is needed.
+## for later when an OTU that has not been subjected to the tax.fill() function is required. Note that doing this write.table() function removes the row names, removing the otu IDs, which is ok for the downstream analysis. ##
+
 notaxfill <- temp
 
-write.table(notaxfill, file = paste(sharedPathAn, "otuTax_tableOW_redo.tsv", sep = "/"), 
+write.table(notaxfill, file = paste(sharedPathAn, "otuTax_tableOW_redo_NoTaxfill.tsv", sep = "/"), 
             quote = FALSE, sep = "\t", row.names = FALSE, col.names = TRUE)
 
-## continue with script
+## continue with script ##
 
 
 temp <- tax.fill(temp, downstream=TRUE)
 
 write.table(temp, file=paste(taxFillPath, "ITS1F.table.taxfill.tsv", sep = "/"),
             append = FALSE, sep = "\t", row.names = FALSE, quote = FALSE)
+## ^^ note that the row.names argument = FALSE, therefore row names will be removed.
 ```
 
 
 Create diversity directory and path. List your datasets for diversity indexes. Adds a bunch of columns in a new diversity metadata file.
+
 Indices obtained (in this specific order) are: Spec Number,  Simpson data,  Inv simpson data,	Shannon data,	Simpson eveness,	Shannon eveness,	Simpson true diversity,	shannon true diversity,	chao,	ACE.
 ```{r}
 dir.create(paste(sharedPathAn, "diversity", sep = "/"), showWarnings = TRUE, recursive = FALSE)
 diversityPath <- paste(sharedPathAn, "diversity", sep = "/")
 
 metaTemp <- metadataITSF
-rownames(metaTemp) <- colnames(temp)[-ncol(temp)] #seems to work
+rownames(metaTemp) <- colnames(temp)[-ncol(temp)]
 temp2 <- OTU.diversity(list(data=temp), metaTemp)
 
 write.table(temp2, file=paste(diversityPath, "owRedo2021_ITS1FPlate1.meta.div.tsv", sep = "/"),
             append = FALSE, sep = "\t", row.names = FALSE, quote=FALSE)
 ```
 
-Save image:
+Save image
 ```{r}
 save.image(paste(imageDirPath, baseImage, sep = ""))
 ```
@@ -446,38 +428,39 @@ Run FUNGuild on the pre-taxfill OTU table with adjusted otu-id column (temp2). M
 # cd /isilon/cfia-ottawa-fallowfield/users/girouxeml/gladishd/FUNGuild
 
 # wget https://raw.githubusercontent.com/UMNFuN/FUNGuild/master/Guilds_v1.1.py
+
+# conda activate python3.6
+
+Run the following code in the linux command line to run the FUNGuild script:
+# python Guilds_v1.1.py -otu /isilon/cfia-ottawa-fallowfield/users/girouxeml/gladishd/pirl_working/oakwilt_redo/otuTax_tableOW_redo_NoTaxfill.tsv -db fungi -m -u
+
 ```{r}
-#system("conda activate python 3.6")
-
-#system("python /isilon/cfia-ottawa-fallowfield/users/girouxeml/gladishd/FUNGuild/Guilds_v1.1.py -otu /isilon/cfia-ottawa-fallowfield/users/girouxeml/gladishd/pirl_working/oakwilt_redo/otuTax_table.tsv -db fungi -m -u")
-
-# output will be in the same directory that the OTU table is in
 
 FUNGdir <- "/isilon/cfia-ottawa-fallowfield/users/girouxeml/gladishd/FUNGuild"
 script <-"Guilds_v1.1.py"
 FUNGScriptdir <- paste(FUNGdir, script, sep = "/")
+FUNG_Testdir <- paste(sharedPathAn, "FUNGuild_Test", sep = "/")
 
 prefix <- "FUNGuild"
 cmd <- paste("conda activate python3.6 && ",
              " python ", FUNGScriptdir,
-             " -otu ", paste(sharedPathAn, "otuTax_tableOW_redo.tsv", sep = "/"),
+             " -otu ", paste(FUNG_Testdir, "otuTax_table.tsv", sep = "/"),
              " -db fungi",
              " -m ", " -u ",
              " && conda deactivate ", sep = "")
 suffix <- ".sub"; cat(bashDirections); MakeQsubs(cmd, prefix, suffix)
 
-### ^^ this code has been giving me issues & does not work yet. I have not yet figured out how to run the FUNGuild script through RStudio.
+### ^^ This code does not work, just an attempt at running the FUNGuild script. I have yet to figure out a way to run the FUNGuild script from an R script. To actually run it, see lines 422-435 above.
+
 ```
 
 FIGURES
 ```{r}
 library("RAM")
 
-pathDataAn <- "/isilon/cfia-ottawa-fallowfield/users/girouxeml/gladishd/pirl_working/oakwilt_redo"
+sharedPathAn <- "/isilon/cfia-ottawa-fallowfield/users/girouxeml/gladishd/pirl_working/oakwilt_redo"
 
-taxFillPath <- paste(pathDataAn, "taxFill", sep = "/")
-
-## looks like we're only using ITS1F reads
+taxFillPath <- paste(sharedPathAn, "taxFill", sep = "/")
 
 tftemp <- read.table(paste(taxFillPath, "ITS1F.table.taxfill.tsv", sep = "/"),
                       sep = "\t", header = TRUE, dec = ".", 
@@ -486,43 +469,32 @@ tftemp <- read.table(paste(taxFillPath, "ITS1F.table.taxfill.tsv", sep = "/"),
                       as.is = TRUE, colClasses=c("taxonomy"="character"))
 
 tftemp <- tax.fill(temptest, downstream=TRUE)
-  
-write.table(tftemp, file=paste(taxFillPath, "ITS1F.table.taxFillOW_redo.tsv", sep = "/"),
-              append    = FALSE,
-              sep       = "\t",
-              row.names = FALSE,
-              quote = FALSE)
+# ^^ If you look at the "taxonomy" column after running this line, you will see that the tax.fill function removes spaces between the taxonomic levels, and causes repeats of names. While the tax.fill() function removes incertae sedis, this causes errors when trying to make the figures. Therefore, it is recommended that the pre-tax.fill() version of the OTU table be used to create figures whose associated functions require OTU table data as input (i.e. the abundance plots and venn diagrams).
 
-# ^ this table (as compared to ITS1F.table.taxfill.tsv) has no rownames in the left-most columns. That is what the difference is.
 
 ```
 
 ```{r}
-tabletemp <- read.table(paste(taxFillPathGB, "ITS1F.table.taxFillOW.tsv", sep = ""),
-                      sep = "\t", header = TRUE, dec = ".", comment.char = "", quote = "", stringsAsFactors = TRUE,
-                      as.is = TRUE, check.names = FALSE, colClasses=c("taxonomy"="character"))
-
-metatemp <-  read.table(paste(pathDataAnGB, "OWPlate1_ITS1F.meta.tsv", sep = "/"),
+metatemp <-  read.table(paste(sharedPathAn, "OWPlate1_ITS1F.meta.tsv", sep = "/"),
                       sep = "\t", header = TRUE, dec = ".", comment.char = "", quote = "", stringsAsFactors = TRUE,
                       as.is = TRUE)
 
 metatemp$row.names <- NULL
 
-rownames(metatemp) <- colnames(tabletemp)[-ncol(tabletemp)]
+rownames(metatemp) <- colnames(tftemp)[-ncol(tftemp)]
 
 ```
 
-
 Calculation of diversity indices
 ```{r}
-dir.create(paste(pathDataAn, "diversity", sep = "/"),
+dir.create(paste(sharedPathAn, "diversity", sep = "/"),
            showWarnings = TRUE,
            recursive  = FALSE)
-diversityPath <- paste(pathDataAn, "diversity", sep = "/")
+diversityPath <- paste(sharedPathAn, "diversity", sep = "/")
 
-metatempdiv <- OTU.diversity(list(data=tabletemp), metatemp)
+metatempdiv <- OTU.diversity(list(data=tftemp), metatemp)
 
-write.table(metatempdiv, file=paste(diversityPath, "OW2021redo_ITS.meta.div.tsv", sep = "/"),
+write.table(metatempdiv, file=paste(diversityPath, "OW2021redo_ITS1F.meta.div.tsv", sep = "/"),
               append    = FALSE,
               sep       = "\t",
               row.names = FALSE,
@@ -538,68 +510,50 @@ dir.create(paste(diversityPath, "diversityPlot", sep = "/"),
            recursive    = FALSE)
 diversityPlotPath <- paste(diversityPath, "diversityPlot", sep = "/")
 
-tabletemp <- read.table(paste(taxFillPathGB, "ITS1F.table.taxFillOW.tsv", sep = ""),
-                      sep = "\t", header = TRUE, dec = ".", comment.char = "", quote = "", stringsAsFactors = TRUE,
-                      as.is = TRUE, check.names = FALSE, colClasses=c("taxonomy"="character"))
+
+#### Shannon True Div ###
+
+## TrapLocation ##
+
+group.diversity(list(data=tftemp), metatempdiv, factors = c("TrapLocation"), indices = c("shan_trudiv"), diversity.info=TRUE, compare="NULL", ylab="Shannon True Div", facet.x.cex = "10", facet.y.cex = "10")
 
 
-#### Shannon True Div
-
-## TrapLocation
-
-group.diversity(list(data=tabletemp), metatempdiv, factors = c("TrapLocation"), indices = c("shan_trudiv"), diversity.info=TRUE, compare="NULL", ylab="Shannon True Div", facet.x.cex = "10", facet.y.cex = "10")
-
-
-# Run the group.diversity() function in the console. The figure will appear in the bottom right. Export and save as image (.png) with appropriate dimensions. Dimensions 800 x 700 seems to work well.
+# Run the group.diversity() function in the console. The figure will appear in the bottom right. Export and save as image (.png) to directory "diversity plot" with appropriate dimensions. Dimensions 800 x 700 seems to work well.
 
 
 
-## CollectedLocation
+## CollectedLocation ##
 
-group.diversity(list(data=tabletemp), metatempdiv, factors = c("CollectedLocation"), indices = c("shan_trudiv"), diversity.info=TRUE, compare="NULL", ylab="Shannon True Div", facet.x.cex = "10", facet.y.cex = "10")
-
-
-### Simpson True Diversity
-
-## TrapLocation
-
-png(filename=paste(diversityPlotPathGB, "ITS", ".Simpson.True.Div.TrapLocation.png", sep = ""),
-      width = 800, height = 700, units = "px")
-
-group.diversity(list(data=tabletemp), metatempdiv, factors = c("TrapLocation"), indices = c("sim_trudiv"), diversity.info=TRUE, compare="NULL", ylab="Simpson True Div", facet.x.cex = "10", facet.y.cex = "10")
+group.diversity(list(data=tftemp), metatempdiv, factors = c("CollectedLocation"), indices = c("shan_trudiv"), diversity.info=TRUE, compare="NULL", ylab="Shannon True Div", facet.x.cex = "10", facet.y.cex = "10")
 
 
-## CollectedLocation
+### Simpson True Diversity ###
 
-png(filename=paste(diversityPlotPathGB, "ITS", ".Simpson.True.Div.CollectedLocation.png", sep = ""),
-      width = 800, height = 700, units = "px")
+## TrapLocation ##
 
-group.diversity(list(data=tabletemp), metatempdiv, factors = c("CollectedLocation"), indices = c("sim_trudiv"), diversity.info=TRUE, compare="NULL", ylab="Simpson True Div", facet.x.cex = "10", facet.y.cex = "10")
-
-
-### Simpson Evenness
-
-## TrapLocation
-
-png(filename=paste(diversityPlotPath, "ITS", ".Simpson.Evenness.TrapLocation.png", sep = ""),
-      width = 800, height = 700, units = "px")
-
-group.diversity(list(data=tabletemp), metatempdiv, factors = c("TrapLocation"), indices = c("sim_even"), diversity.info=TRUE, compare="NULL", ylab="Simpson Evenness", facet.x.cex = "10", facet.y.cex = "10")
+group.diversity(list(data=tftemp), metatempdiv, factors = c("TrapLocation"), indices = c("sim_trudiv"), diversity.info=TRUE, compare="NULL", ylab="Simpson True Div", facet.x.cex = "10", facet.y.cex = "10")
 
 
-## CollectedLocation
+## CollectedLocation ##
 
-png(filename=paste(diversityPlotPath, "ITS", ".Simpson.Evenness.CollectedLocation.png", sep = ""),
-      width = 800, height = 700, units = "px")
+group.diversity(list(data=tftemp), metatempdiv, factors = c("CollectedLocation"), indices = c("sim_trudiv"), diversity.info=TRUE, compare="NULL", ylab="Simpson True Div", facet.x.cex = "10", facet.y.cex = "10")
 
-group.diversity(list(data=tabletemp), metatempdiv, factors = c("CollectedLocation"), indices = c("sim_even"), diversity.info=TRUE, compare="NULL", ylab="Simpson Evenness", facet.x.cex = "10", facet.y.cex = "10")
 
+### Simpson Evenness ###
+
+## TrapLocation ##
+
+group.diversity(list(data=tftemp), metatempdiv, factors = c("TrapLocation"), indices = c("sim_even"), diversity.info=TRUE, compare="NULL", ylab="Simpson Evenness", facet.x.cex = "10", facet.y.cex = "10")
+
+
+## CollectedLocation ##
+
+group.diversity(list(data=tftemp), metatempdiv, factors = c("CollectedLocation"), indices = c("sim_even"), diversity.info=TRUE, compare="NULL", ylab="Simpson Evenness", facet.x.cex = "10", facet.y.cex = "10")
 ```
 
-
-Generate abundance bar graphs (might not be necessary. Guillaume wants top 100, but this would make the figure visually interpretable, as there are too many like colours in the bar graph. Perhaps just use the list in the excel file that is created later on in this script.
+Generate abundance bar graphs
 ```{r}
-visdir <- paste(pathDataAn, "visualizations", sep = "/")
+visdir <- paste(sharedPathAn, "visualizations", sep = "/")
 dir.create(paste(visdir, "groupAbundanceBarPlots", sep = "/"),
              showWarnings = TRUE,
              recursive    = FALSE)
@@ -607,56 +561,48 @@ dir.create(paste(visdir, "groupAbundanceBarPlots", sep = "/"),
 abundNbBarPlotPath <- paste(visdir, "groupAbundanceBarPlots", sep = "/")
 
 
-# Using the .tsv files that had been subjected to tax.fill() results in names that are too long. Using notaxfill should work but it needs spaces between the taxonomic levels in the "taxonomy" column. I think running tax.fill gives spaces, which is why tabletemp works when trying to use group.abundance.meta(). Write some code to give spaces in notaxfill to solve all these issues.
+# Using the .tsv files that had been subjected to tax.fill() results in names that are too long. This can interfere with the labels of the abundance plots. Using table "notaxfill" should work but it needs spaces between the taxonomic levels in the "taxonomy" column. Write some code to give spaces in notaxfill to solve these issues.
 
-write.table(notaxfill, file=paste(sharedPathAn, "ITS1F.table.NotaxFillOW_redo.tsv", sep = "/"),
-              append    = FALSE,
-              sep       = "\t",
-              row.names = FALSE,
-              quote = FALSE)
-
-tabletempNTF <- read.table(paste(sharedPathAn, "ITS1F.table.NotaxFillOW_redo.tsv", sep = "/"),
-                      sep = "\t", header = TRUE, dec = ".", comment.char = "", quote = "", stringsAsFactors = TRUE,
-                      as.is = TRUE, check.names = FALSE, colClasses=c("taxonomy"="character"))
-
-tabletempNTF$taxonomy <- gsub(";", "; ", tabletempNTF$taxonomy)
+notaxfill$taxonomy <- gsub(";", "; ", notaxfill$taxonomy)
 
 
-#### TrapLocation
+#### TrapLocation ###
 
-## Species
+## Species ##
 
-group.abundance.meta(data=(list(data=tabletempNTF)), rank="s", top = 100, count =  TRUE, drop.unclassified = FALSE, cex.x = 6.7, main = "Top 100 counts of taxonomic groups at the species level", meta = metatemp, meta.factor = c("TrapLocation"))
+group.abundance.meta(data=(list(data=notaxfill)), rank="s", top = 30, count =  TRUE, drop.unclassified = FALSE, cex.x = 6.7, main = "Top 30 counts of taxonomic groups at the species level", meta = metatemp, meta.factor = c("TrapLocation"))
 
-# In the Plot menu, click export then save as image. Save as .png with dimensions width = 3500, height = 2000. Do this saving procedure after each time group.abundance.meta() is run. Save to created directory groupAbundanceBarPlots
-
-
-## Genus
-
-group.abundance.meta(data=(list(data=tabletempNTF)), rank="g", top = 30, count =  TRUE, drop.unclassified = FALSE, cex.x = 6.7, main = "Top 30 counts of taxonomic groups at the genus level", meta = metatemp, meta.factor = c("TrapLocation"))
+# In the Plot menu, click export then save as image. Save as .png with dimensions width = 3500, height = 2000. Do this saving procedure after each time group.abundance.meta() is run. Save to created directory "groupAbundanceBarPlots".
 
 
+## Genus ##
 
-#### Collected Location
-
-
-## Species
-
-group.abundance.meta(data=(list(data=tabletempNTF)), rank="s", top = 30, count =  TRUE, drop.unclassified = FALSE, cex.x = 7.5, main = "Top 30 counts of taxonomic groups at the species level", meta = metatemp, meta.factor = c("CollectedLocation"))
+group.abundance.meta(data=(list(data=notaxfill)), rank="g", top = 30, count =  TRUE, drop.unclassified = FALSE, cex.x = 6.7, main = "Top 30 counts of taxonomic groups at the genus level", meta = metatemp, meta.factor = c("TrapLocation"))
 
 
-## Genus
+#### Collected Location ###
 
-group.abundance.meta(data=(list(data=tabletempNTF)), rank="s", top = 30, count =  TRUE, drop.unclassified = FALSE, cex.x = 7.5, main = "Top 30 counts of taxonomic groups at the species level", meta = metatemp, meta.factor = c("CollectedLocation"))
+
+## Species ##
+
+group.abundance.meta(data=(list(data=notaxfill)), rank="s", top = 30, count =  TRUE, drop.unclassified = FALSE, cex.x = 7.5, main = "Top 30 counts of taxonomic groups at the species level", meta = metatemp, meta.factor = c("CollectedLocation"))
+
+
+## Genus ##
+
+group.abundance.meta(data=(list(data=notaxfill)), rank="s", top = 30, count =  TRUE, drop.unclassified = FALSE, cex.x = 7.5, main = "Top 30 counts of taxonomic groups at the species level", meta = metatemp, meta.factor = c("CollectedLocation"))
 
 ```
 
 
 Venn Diagrams
 ```{r}
+
+# When doing this chunk, run the group.venn() steps by copy pasting the code into the console. Click export and save the file as a .png in directory "visualizations/vennDiagrams" with appropriate dimensions. Dimensions that worked well for me are width = 2500 and height = 1500.
+
 ## TrapLocation - Species
 
-coreTaxaITSTrapLoca_S <- core.Taxa(data = list(data = tabletempNTF), is.OTU = TRUE, meta = metatemp, rank = "s", drop.unclassified = FALSE, meta.factor = "TrapLocation", percent = 0)
+coreTaxaITSTrapLoca_S <- core.Taxa(data = list(data = notaxfill), is.OTU = TRUE, meta = metatemp, rank = "s", drop.unclassified = FALSE, meta.factor = "TrapLocation", percent = 0)
 
 Trap1Taxa_S <- coreTaxaITSTrapLoca_S$data$Trap1$taxa
 Trap2Taxa_S <- coreTaxaITSTrapLoca_S$data$Trap2$taxa
@@ -670,7 +616,7 @@ group.venn(vectors = TrapLocaVector_S, cat.cex = 3, cex = 3, label = FALSE, lab.
 
 ## TrapLocation - Genus
 
-coreTaxaITSTrapLoca_G <- core.Taxa(data = list(data = tabletempNTF), is.OTU = TRUE, meta = metatemp, rank = "g", drop.unclassified = FALSE, meta.factor = "TrapLocation", percent = 0)
+coreTaxaITSTrapLoca_G <- core.Taxa(data = list(data = notaxfill), is.OTU = TRUE, meta = metatemp, rank = "g", drop.unclassified = FALSE, meta.factor = "TrapLocation", percent = 0)
 
 Trap1Taxa_G <- coreTaxaITSTrapLoca_G$data$Trap1$taxa
 Trap2Taxa_G <- coreTaxaITSTrapLoca_G$data$Trap2$taxa
@@ -694,70 +640,77 @@ library("stringr")
 
 # Make a table containing ONLY the samples that show detection of Ceratocystis fagacearum (samples 56, 77, 79, 80, 81, 82, 83, 84) and then order tables to show data in increasing order.
 
-cFagacearumTbl <- tabletempNTF[,c(56, 77, 79:84, 94)]
+cFagacearumTbl <- notaxfill[,c(56, 77, 79:84, 94)]
 
 
-# make a table that is just sample 56 and try to order it in descending order
+# Make a table that is just sample 56 and order it in descending order
 
-cFagaSamp56 <- tabletempNTF[, c(56,94)]
+cFagaSamp56 <- notaxfill[, c(56,94)]
 cFagaSamp56 <- arrange(cFagaSamp56, ... = -cFagaSamp56$OW.ITSF.2021.Plate1InsectRpd.B56, .by_group = FALSE)
+
 cFagaSamp56Abun <- cFagaSamp56[str_detect(cFagaSamp56$taxonomy, "fagacearum"), ]
 
-# ^ in this created dataframe, the row # corresponds to the abundance rank of C. fagacearum in that specific sample. Figure out a way to do this for all samples containing C. fagacearum, such as a for loop.
+# ^ in this created dataframe, the row number corresponds to the abundance rank of C. fagacearum in that specific sample. Do this for the rest of the C. fagacearum-containing samples.
 
 
-### 
 
 # Sample 77
 
-cFagaSamp77 <- tabletempNTF[, c(77,94)]
+cFagaSamp77 <- notaxfill[, c(77,94)]
 cFagaSamp77 <- arrange(cFagaSamp77, ... = -cFagaSamp77$OW.ITSF.2021.Plate1InsectRpd.B77, .by_group = FALSE)
+
 cFagaSamp77Abun <- cFagaSamp77[str_detect(cFagaSamp77$taxonomy, "fagacearum"), ]
 
 
 # sample 79
 
-cFagaSamp79 <- tabletempNTF[, c(79,94)]
+cFagaSamp79 <- notaxfill[, c(79,94)]
 cFagaSamp79 <- arrange(cFagaSamp79, ... = -cFagaSamp79$OW.ITSF.2021.Plate1InsectRpd.B79, .by_group = FALSE)
+
 cFagaSamp79Abun <- cFagaSamp79[str_detect(cFagaSamp79$taxonomy, "fagacearum"), ]
 
 
 # sample 80
 
-cFagaSamp80 <- tabletempNTF[, c(80,94)]
+cFagaSamp80 <- notaxfill[, c(80,94)]
 cFagaSamp80 <- arrange(cFagaSamp80, ... = -cFagaSamp80$OW.ITSF.2021.Plate1InsectRpd.B80, .by_group = FALSE)
+
 cFagaSamp80Abun <- cFagaSamp80[str_detect(cFagaSamp80$taxonomy, "fagacearum"), ]
 
 
 ## sample 81
 
-cFagaSamp81 <- tabletempNTF[, c(81,94)]
+cFagaSamp81 <- notaxfill[, c(81,94)]
 cFagaSamp81 <- arrange(cFagaSamp81, ... = -cFagaSamp81$OW.ITSF.2021.Plate1InsectRpd.B81, .by_group = FALSE)
+
 cFagaSamp81Abun <- cFagaSamp81[str_detect(cFagaSamp81$taxonomy, "fagacearum"), ]
 
 
 # sample 82
 
-cFagaSamp82 <- tabletempNTF[, c(82,94)]
+cFagaSamp82 <- notaxfill[, c(82,94)]
 cFagaSamp82 <- arrange(cFagaSamp82, ... = -cFagaSamp82$OW.ITSF.2021.Plate1InsectRpd.B82, .by_group = FALSE)
+
 cFagaSamp82Abun <- cFagaSamp82[str_detect(cFagaSamp82$taxonomy, "fagacearum"), ]
 
 
 # sample 83
 
-cFagaSamp83 <- tabletempNTF[, c(83,94)]
+cFagaSamp83 <- notaxfill[, c(83,94)]
 cFagaSamp83 <- arrange(cFagaSamp83, ... = -cFagaSamp83$OW.ITSF.2021.Plate1InsectRpd.B83, .by_group = FALSE)
+
 cFagaSamp83Abun <- cFagaSamp83[str_detect(cFagaSamp83$taxonomy, "fagacearum"), ]
 
 
 # sample 84
 
-cFagaSamp84 <- tabletempNTF[, c(84,94)]
+cFagaSamp84 <- notaxfill[, c(84,94)]
 cFagaSamp84 <- arrange(cFagaSamp84, ... = -cFagaSamp84$OW.ITSF.2021.Plate1InsectRpd.B84, .by_group = FALSE)
+
 cFagaSamp84Abun <- cFagaSamp84[str_detect(cFagaSamp84$taxonomy, "fagacearum"), ]
 
 
-# Make an excel file showing the samples
+# Make an excel file that has worksheets for each C. fagacearum-containing sample
 
 install.packages("openxlsx")
 library("openxlsx")
@@ -786,5 +739,3 @@ dir.create(workbookPath)
 
 saveWorkbook(work_bookcFaga, file = paste(workbookPath, "ordered_cFagacearum_containing_samples.xlsx", sep = "/"), overwrite = TRUE)
 ```
-
-## the resultant excel file demonstrates abundance of each species in order, for each sample that contains C. fagacaerum.
