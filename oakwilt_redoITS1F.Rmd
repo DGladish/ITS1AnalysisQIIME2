@@ -142,10 +142,11 @@ dir.create(itsxpressLogs, showWarnings = TRUE, recursive = TRUE)
 
 qiime2Dir <- paste(sharedPathAn, "qiime2", sep = "/")
 dir.create(qiime2Dir, showWarnings = TRUE, recursive = FALSE)
-```     
+```
 
+### Step 2:       
 Retrieve ITS1 part of the amplicons using ITSxpress (includes trimming regions and export)      
-Run ITSxpress on the raw fastq reads   
+Run ITSxpress on the raw fastq reads:   
      
 **Note:** For the ITS2 region, itsxpress does not recognise the ITS2 amplicon regions and nothing is returned - no OTU table for ITS2 can be generated. We are currently looking into finding a solution so that the ITS2R reads can be used as well.
 ```{r}
@@ -330,6 +331,7 @@ cmd <- paste("conda activate qiime2-2021.2 && ",
              " && conda deactivate ", sep = "")
 suffix <- ".sub"; cat(bashDirections); MakeQsubs(cmd, prefix, suffix)
 ```
+
 ```{r}
 prefix <- "qiimeFeatureExport"
 cmd <- paste("conda activate qiime2-2021.2 && ",
@@ -419,39 +421,43 @@ Save image
 ```{r}
 save.image(paste(imageDirPath, baseImage, sep = ""))
 ```
-Before running FUNGuild, ensure that a current version of python is installed.
+FUNGuildR
 
-Run FUNGuild on the pre-taxfill OTU table with adjusted otu-id column (temp2). Make a directory to house the FUNGuild script. Download from https://github.com/UMNFuN/FUNGuild. Make sure you have first cd to the directory that houses the .py file before running the script.
+Obtain guild information and to append it to the OTU table. Code obtained from https://github.com/brendanf/FUNGuildR/. 
+```{r}
+FUNGuildDir <- paste(sharedPathAn, "FUNGuild", sep = "/")
+dir.create(paste(sharedPathAn, "FUNGuild", sep = "/"),
+             showWarnings = TRUE,
+             recursive    = FALSE)
 
-# mkdir FUNGuild
+library("devtools")
+library(knitr)
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.path = "man/figures/README-",
+  out.width = "100%"
+)
+knit_print.data.frame = function(x, ...) {
+    res = paste(c("", "", knitr::kable(x, output = FALSE)), collapse = "\n")
+    asis_output(res)
+}
+# register the method
+registerS3method("knit_print", "data.frame", knit_print.data.frame)
 
-# cd /isilon/cfia-ottawa-fallowfield/users/girouxeml/gladishd/FUNGuild
-
-# wget https://raw.githubusercontent.com/UMNFuN/FUNGuild/master/Guilds_v1.1.py
-
-# conda activate python3.6
-
-Run the following code in the linux command line to run the FUNGuild script:
-# python Guilds_v1.1.py -otu /isilon/cfia-ottawa-fallowfield/users/girouxeml/gladishd/pirl_working/oakwilt_redo/otuTax_tableOW_redo_NoTaxfill.tsv -db fungi -m -u
+devtools::install_github("brendanf/FUNGuildR")
+library("FUNGuildR")
+```
 
 ```{r}
+OW_OTU <- notaxfill
+OW_guilds <- funguild_assign(otu_table = OW_OTU, db = get_funguild_db(), tax_col = "taxonomy")
 
-FUNGdir <- "/isilon/cfia-ottawa-fallowfield/users/girouxeml/gladishd/FUNGuild"
-script <-"Guilds_v1.1.py"
-FUNGScriptdir <- paste(FUNGdir, script, sep = "/")
-FUNG_Testdir <- paste(sharedPathAn, "FUNGuild_Test", sep = "/")
-
-prefix <- "FUNGuild"
-cmd <- paste("conda activate python3.6 && ",
-             " python ", FUNGScriptdir,
-             " -otu ", paste(FUNG_Testdir, "otuTax_table.tsv", sep = "/"),
-             " -db fungi",
-             " -m ", " -u ",
-             " && conda deactivate ", sep = "")
-suffix <- ".sub"; cat(bashDirections); MakeQsubs(cmd, prefix, suffix)
-
-### ^^ This code does not work, just an attempt at running the FUNGuild script. I have yet to figure out a way to run the FUNGuild script from an R script. To actually run it, see lines 422-435 above.
-
+write.table(OW_guilds, file=paste(FUNGuildDir, "otuTax_tableOW_redo.guilds.tsv", sep = "/"),
+              append    = FALSE,
+              sep       = "\t",
+              row.names = FALSE,
+              quote=FALSE)
 ```
 
 FIGURES
@@ -494,12 +500,11 @@ diversityPath <- paste(sharedPathAn, "diversity", sep = "/")
 
 metatempdiv <- OTU.diversity(list(data=tftemp), metatemp)
 
-write.table(metatempdiv, file=paste(diversityPath, "OW2021redo_ITS1F.meta.div.tsv", sep = "/"),
+write.table(metatempdiv, file=paste(sharedPathAn, "OW2021redo_ITS1F.meta.div.tsv", sep = "/"),
               append    = FALSE,
               sep       = "\t",
               row.names = FALSE,
               quote=FALSE)
-
 ```
 
 Mean & whisker plots
