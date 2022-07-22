@@ -1,5 +1,5 @@
 # ITS1AnalysisQIIME2
-qiime2 bioinformatics pipeline for ITS1 region analysis
+qiime2 bioinformatics pipeline for ITS region analysis for reads generated using the ITS1F primer
 
 We seek to detect plant pathogens by the means of amplicon sequencing and metagenomics.
 Here, we used Ion Torrent sequencing to generate the raw sequences.
